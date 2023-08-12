@@ -14,6 +14,7 @@ ifeq ($(shell uname),Linux)
   # Linux specific settings
   BASE = platform/linux
   CFLAGS := $(CFLAGS) -pthread -iquote $(BASE)
+  OBJS := $(OBJS) $(BASE)/intr.o
 endif
 
 ifeq ($(shell uname),Darwin)
