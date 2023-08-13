@@ -91,28 +91,45 @@ queue_init(struct queue_head *queue)
     queue->num = 0;
 }
 
+/**
+ * キューの末尾に新しい要素を追加
+ */
 void *
 queue_push(struct queue_head *queue, void *data)
 {
     struct queue_entry *entry;
 
+    /* NULLポインタチェック。NGなら NULL を返す */
     if (!queue) {
         return NULL;
     }
+
+    /* 新しいエントリのメモリを確保 */
     entry = memory_alloc(sizeof(*entry));
     if (!entry) {
+        /* メモリ確保出来なかった場合、NULLを返す */
         return NULL;
     }
     entry->next = NULL;
     entry->data = data;
+    
+    /* queue->tail がNULLでなければ ≒ 既にエントリがある場合 */
     if (queue->tail) {
+        /* 末尾の次に本エントリを設定 */
         queue->tail->next = entry;
     }
+    /* 本エントリを末尾にする */
     queue->tail = entry;
+
+    /* queue->headがNULLの場合は head も本エントリに設定 */
     if (!queue->head) {
         queue->head = entry;
     }
+
+    /* キューの要素数をインクリメント */
     queue->num++;
+
+    /* 追加されたデータを返す */
     return data;
 }
 
