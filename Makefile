@@ -1,6 +1,7 @@
 APPS = 
 
-DRIVERS = driver/dummy.o \
+DRIVERS =	driver/dummy.o \
+			driver/loopback.o \
 
 OBJS =	util.o \
 		net.o \
