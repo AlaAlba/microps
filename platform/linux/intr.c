@@ -12,6 +12,7 @@
 #include "platform.h"
 
 #include "util.h"
+#include "net.h"
 
 /**
  * 割り込み要求 (IRQ) の構造体
@@ -134,6 +135,10 @@ intr_thread(void *arg)
                 /* terminate を 1 にしてループを抜ける */
                 terminate = 1;
                 break;
+            /* SIGUSR1: ソフトウェア割り込み用のシグナル */
+            case SIGUSR1:
+                net_softirq_handler();
+                break;
             default:
                 /* デバイス割り込み用のシグナル */
                 /* IRQ リストを巡回 */
@@ -209,5 +214,7 @@ intr_init(void)
     sigemptyset(&sigmask);
     /* シグナル集合に SIGHUP を追加 (割り込みスレッド終了通知用) */
     sigaddset(&sigmask, SIGHUP);
+    /* シグナル集合に SIGUSR1 を追加 (ソフトウェア割り込み用) */
+    sigaddset(&sigmask, SIGUSR1);
     return 0;
 }
