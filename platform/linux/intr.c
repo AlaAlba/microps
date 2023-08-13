@@ -92,6 +92,8 @@ intr_request_irq(unsigned int irq, int (*handler)(unsigned int irq, void *dev), 
     /* シグナル集合へ新しいシグナルを追加 */
     sigaddset(&sigmask, irq);
     debugf("registered: irq=%u, name=%s", irq, name);
+
+    return 0;
 }
 
 /**
