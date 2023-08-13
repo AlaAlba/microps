@@ -93,13 +93,13 @@ extern int
 net_input_handler(uint16_t type, const uint8_t *data, size_t len, struct net_device *dev);
 
 /**
- * プロトコルスタックの起動(全デバイスオープン)
+ * プロトコルスタックの起動
 */
 extern int
 net_run(void);
 
 /**
- * プロトコルスタックの停止(全デバイスクローズ)
+ * プロトコルスタックの停止
  */
 extern void
 net_shutdown(void);

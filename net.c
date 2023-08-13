@@ -145,6 +145,12 @@ net_run(void)
 {
     struct net_device *dev;
 
+    /* 割り込み機構の起動 */
+    if (intr_run() == -1) {
+        errorf("intr_run() failure");
+        return -1;
+    }
+
     debugf("open all devices...");
     /* 登録済みの全デバイスをオープン */
     for (dev = devices; dev; dev = dev->next) {
@@ -164,12 +170,22 @@ net_shutdown(void)
     for (dev = devices; dev; dev = dev->next) {
         net_device_close(dev);
     }
+
+    /* 割り込み機構の終了 */
+    intr_shutdown();
+
     debugf("shutting down");
 }
 
 int
 net_init(void)
 {
+    /* 割り込み機構の初期化 */
+    if (intr_init() == -1) {
+        errorf("intr_init() failure");
+        return -1;
+    }
+
     infof("initialized");
     return 0;
 }
