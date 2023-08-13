@@ -207,6 +207,9 @@ byteswap32(uint32_t v)
     return (v & 0x000000ff) << 24 | (v & 0x0000ff00) << 8 | (v & 0x00ff0000) >> 8 | (v & 0xff000000) >> 24;
 }
 
+/**
+ * Host TO Network
+*/
 uint16_t
 hton16(uint16_t h)
 {
@@ -216,6 +219,9 @@ hton16(uint16_t h)
     return endian == __LITTLE_ENDIAN ? byteswap16(h) : h;
 }
 
+/**
+ * Network To Host
+*/
 uint16_t
 ntoh16(uint16_t n)
 {
@@ -225,6 +231,9 @@ ntoh16(uint16_t n)
     return endian == __LITTLE_ENDIAN ? byteswap16(n) : n;
 }
 
+/**
+ * Host TO Network
+*/
 uint32_t
 hton32(uint32_t h)
 {
@@ -234,6 +243,9 @@ hton32(uint32_t h)
     return endian == __LITTLE_ENDIAN ? byteswap32(h) : h;
 }
 
+/**
+ * Network To Host
+*/
 uint32_t
 ntoh32(uint32_t n)
 {
@@ -245,8 +257,9 @@ ntoh32(uint32_t n)
 
 /*
  * Checksum
+ * RFC1071 Computing the Internet Checksum
+ * 16ビット毎の「1の補数和の1の補数」
  */
-
 uint16_t
 cksum16(uint16_t *addr, uint16_t count, uint32_t init)
 {
