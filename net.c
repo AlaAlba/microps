@@ -137,6 +137,54 @@ net_device_close(struct net_device *dev)
     return 0;
 }
 
+/**
+ * デバイスとインターフェースの紐づけ
+*/
+/* NOTE: must not be call after net_run() */
+int
+net_device_add_iface(struct net_device *dev, struct net_iface *iface)
+{
+    struct net_iface *entry;
+
+    /* 重複登録のチェック */
+    /* - 単純化のために1つのデバイスに対して同じ family のインターフェースを複数登録できないように制限している */
+    /* - 登録しようとしているインターフェースと同じ family のインターフェースが既に存在していたらエラーを返す */
+    for (entry = dev->ifaces; entry; entry = entry->next) {
+        if (entry->family == iface->family) {
+            /* NOTE: For simplicity, only one iface can be added per family. */
+            errorf("already exists, dev=%s, family=%d", dev->name, entry->family);
+            return -1;
+        }
+    }
+    iface->dev = dev;
+
+    /* Exercise7-1: デバイスのインターフェースリストの先頭に iface を挿入 */
+    iface->next = dev->ifaces; /* 次の iface は今の先頭 */
+    dev->ifaces = iface; /* ifaces の先頭に追加 */
+
+    return 0;
+}
+
+/**
+ * デバイスに紐づくIPインターフェースの取得
+*/
+struct net_iface *
+net_device_get_iface(struct net_device *dev, int family)
+{
+    /* Exercise7-2: デバイスに紐づくインターフェースを検索          */
+    struct net_iface *entry;
+
+    /* - デバイスのインターフェースリスト (dev->ifaces) を巡回 */
+    for (entry = dev->ifaces; entry; entry = entry->next) {
+        /* family が一致するインターフェースを返す */
+        if (entry->family == family) {
+            break;
+        }
+    }
+    /* ※合致するインターフェースを発見できなかったら NULL を返す */
+    return entry;
+}
+
 int
 net_device_output(struct net_device *dev, uint16_t type, const uint8_t *data, size_t len, const void *dst)
 {

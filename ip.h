@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "net.h"
+
 #define IP_VERSION_IPV4 4
 
 #define IP_HDR_SIZE_MIN 20
@@ -18,6 +20,22 @@
 /* IPアドレス用の型 */
 typedef uint32_t ip_addr_t;
 
+/**
+ * IPインターフェース
+*/
+struct ip_iface {
+    /* インターフェース構造体 */
+    struct net_iface iface;
+    /* 次のIPインターフェースへのポインタ */
+    struct ip_iface *next;
+    /* ユニキャストアドレス */
+    ip_addr_t unicast;
+    /* サブネットマスク */
+    ip_addr_t netmask;
+    /* ブロードキャストアドレス */
+    ip_addr_t broadcast;
+};
+
 extern const ip_addr_t IP_ADDR_ANY;
 extern const ip_addr_t IP_ADDR_BROADCAST;
 
@@ -26,6 +44,15 @@ ip_addr_pton(const char *p, ip_addr_t *n);
 
 extern char *
 ip_addr_ntop(ip_addr_t n, char *p, size_t size);
+
+extern struct ip_iface *
+ip_iface_alloc(const char *addr, const char *netmask);
+
+extern int
+ip_iface_register(struct net_device *dev, struct ip_iface *iface);
+
+extern struct ip_iface *
+ip_iface_select(ip_addr_t addr);
 
 extern int
 ip_init(void);
