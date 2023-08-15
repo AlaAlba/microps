@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <string.h>
 
 #include "platform.h"
 
@@ -297,6 +299,151 @@ ip_input(const uint8_t *data, size_t len, struct net_device *dev)
     debugf("dev=%s, iface=%s, protocol=%u, total=%u", 
         dev->name, ip_addr_ntop(iface->unicast, addr, sizeof(addr)), hdr->protocol, total);
     ip_dump(data, total);
+}
+
+/**
+ * デバイスからの送信
+*/
+static int
+ip_output_device(struct ip_iface *iface, const uint8_t *data, size_t len, ip_addr_t dst)
+{
+    uint8_t hwaddr[NET_DEVICE_ADDR_LEN] = {};
+
+    /* ARP によるアドレス解決が必要なデバイスのための処理 */
+    if (NET_IFACE(iface)->dev->flags & NET_DEVICE_FLAG_NEED_ARP) {
+        /* 宛先がブロードキャストIPアドレスの場合には ARP によるアドレス解決は行わずに */
+        /* そのデバイスのブロードキャストHWアドレスを使う */
+        if (dst == iface->broadcast || dst == IP_ADDR_BROADCAST) {
+            memcpy(hwaddr, NET_IFACE(iface)->dev->broadcast, NET_IFACE(iface)->dev->alen);
+        } else {
+            /* まだ ARP を実装していないのでエラーにしておく */
+            errorf("arp does not implement");
+            return -1;
+        }
+    }
+
+    /* Exercise8-4: デバイスから送信 */
+    /* - net_device_output() を呼び出してインターフェースに紐づくデバイスから IPデータグラムを送信 */
+    /* - net_device_output() の戻り値をこの関数の戻り値として返す */
+    return net_device_output(NET_IFACE(iface)->dev, NET_PROTOCOL_TYPE_IP, data, len, hwaddr);
+}
+
+/**
+ * IPデータグラムの生成
+*/
+static ssize_t
+ip_output_core(struct ip_iface *iface, uint8_t protocol, const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst, uint16_t id, uint16_t offset)
+{
+    uint8_t buf[IP_TOTAL_SIZE_MAX];
+    struct ip_hdr *hdr;
+    uint16_t hlen, total;
+    char addr[IP_ADDR_STR_LEN];
+
+    hdr = (struct ip_hdr *)buf;
+
+    /* Exercise8-3: IPデータグラムの生成 */
+    /* (1) IPヘッダの各フィールドに値を設定 */
+    /*  - IPヘッダの長さは IP_HDR_SIZE_MIN 固定とする (オプションなし) */
+    /*  - TOS=0, TTL=255 とする */
+    /*  - チェックサムの計算結果はバイトオーダを変換せずにそのまま固定する 
+    　  (ネットワークバイトオーダーのバイト列のチェックサム計算結果はネットワークバイトオーダーで得られる) */
+    /*    - チェックサム計算の際、あらかじめチェックサムフィールドに 0 を設定するのを忘れずに */
+    hlen = IP_HDR_SIZE_MIN;
+    hdr->vhl = (IP_VERSION_IPV4 << 4) | (hlen >> 2);
+    hdr->tos = 0;
+    total = hlen + len;
+    hdr->total = hton16(total);
+    hdr->id = hton16(id);
+    hdr->offset = hton16(offset);
+    hdr->ttl = 255;
+    hdr->protocol = protocol;
+    hdr->sum = 0; /* あらかじめ 0 設定 */
+    hdr->src = src;
+    hdr->dst = dst;
+    hdr->sum = cksum16((uint16_t *)hdr, hlen, 0); /* don't convert byteorder */
+
+    /* (2) IPヘッダの直後にデータを配置（コピー）する */
+    memcpy(hdr+1, data, len);
+
+    debugf("dev=%s, dst=%s, protocol=%u, len=%u",
+        NET_IFACE(iface)->dev->name, ip_addr_ntop(dst, addr, sizeof(addr)), protocol, total);
+    ip_dump(buf, total);
+    /* 生成した IPデータグラムを実際にデバイスから送信するための関数に渡す */
+    return ip_output_device(iface, buf, total, dst);
+}
+
+/**
+ * IPデータグラム
+*/
+static uint16_t
+ip_generate_id(void)
+{
+    static mutex_t mutex = MUTEX_INITIALIZER;
+    static uint16_t id = 128;
+    uint16_t ret;
+
+    mutex_lock(&mutex);
+    ret = id++;
+    mutex_unlock(&mutex);
+    return ret;
+}
+
+/**
+ * IP の出力関数
+*/
+ssize_t
+ip_output(uint8_t protocol, const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst)
+{
+    struct ip_iface *iface;
+    char addr[IP_ADDR_STR_LEN];
+    uint16_t id;
+
+    /* まだIPルーティングを実装していないので送信元IPアドレスが指定されない場合はエラーを返す */
+    if (src == IP_ADDR_ANY) {
+        errorf("ip routing does not implement");
+        return -1;
+    }
+    else {
+        /* NOTE: I'll rewrite this block later. */
+
+        /* Exercise8-1: IPインターフェースの検索 */
+        /* - 送信元IPアドレス(src)に対応するIPインターフェースを検索 */
+        /*    - インターフェースが見つからない場合はエラーを返す */
+        iface = ip_iface_select(src);
+        if (iface == NULL) {
+            errorf("src ip address not found.");
+            return -1;
+        }
+
+        /* Exercise8-2: 宛先へ到達可能か確認 */
+        /* - 宛先アドレス(dst) が以下の条件に合致しない場合エラーを返す(到達不能) */
+        /* インターフェースのネットワークアドレスの範囲に含まれる */
+        /* ブロードキャストIPアドレス(255.255.255.255) */
+         if (
+            ((dst & iface->netmask) != (iface->unicast & iface->netmask))
+            && (dst != IP_ADDR_BROADCAST)
+        ) {
+            errorf("not reached, dst=%s", ip_addr_ntop(src, addr, sizeof(addr)));
+            return -1;
+        }
+    }
+
+    /* フラグメンテーションをサポートしないので MTU を超える場合はエラーを返す */
+    if (NET_IFACE(iface)->dev->mtu < IP_HDR_SIZE_MIN + len) {
+        errorf("too long, dev=%s, mtu=%u < %zu",
+            NET_IFACE(iface)->dev->name, NET_IFACE(iface)->dev->mtu, IP_HDR_SIZE_MIN + len);
+        return -1;
+    }
+
+    /* IPデータグラムのIDを採番 */
+    id = ip_generate_id();
+    
+    /* IPデータグラムを生成して出力する */
+    if (ip_output_core(iface, protocol, data, len, iface->unicast, dst, id, 0) == -1) {
+        errorf("ip_output_core() failure");
+        return -1;
+    }
+    return len;
 }
 
 /**
