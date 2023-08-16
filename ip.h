@@ -9,7 +9,11 @@
 
 #define IP_VERSION_IPV4 4
 
+/* IPデータグラムのヘッダ部の最小バイト */
+/* OptionやPadding以外 */
 #define IP_HDR_SIZE_MIN 20
+
+/* IPデータグラムのヘッダ部の最大バイト */
 #define IP_HDR_SIZE_MAX 60
 
 #define IP_TOTAL_SIZE_MAX UINT16_MAX /* maximum value of uint16 */

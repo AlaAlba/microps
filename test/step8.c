@@ -26,6 +26,9 @@ on_signal(int s)
     terminate = 1;
 }
 
+/**
+ * セットアップ(プロトコルスタックの初期化〜デバイス登録〜起動まで)
+ */
 static int
 setup(void)
 {
@@ -69,6 +72,9 @@ setup(void)
     return 0;
 }
 
+/**
+ * クリーンアップ
+ */
 static void
 cleanup(void)
 {

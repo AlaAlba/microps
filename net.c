@@ -45,6 +45,7 @@ static struct net_protocol *protocols;
 
 /**
  * デバイスの生成
+ * @return デバイス構造体
 */
 struct net_device *
 net_device_alloc(void)
@@ -61,6 +62,11 @@ net_device_alloc(void)
     return dev;
 }
 
+/**
+ * デバイスの登録
+ * @param [in,out] dev デバイス構造体ポインタ
+ * @return 結果
+*/
 /* NOTE: must not be call after net_run() */
 int
 net_device_register(struct net_device *dev)
@@ -214,6 +220,9 @@ net_device_output(struct net_device *dev, uint16_t type, const uint8_t *data, si
 
 /**
  * プロトコルの登録
+ * @param [in] type Ethernet Type Number (NET_PROTOCOL_TYPE_XXX)
+ * @param [in,out] handler プロトコルの入力関数ポインタ
+ * @return 結果
 */
 /* NOTE: must not be call after net_run() */
 int
