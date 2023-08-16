@@ -1,9 +1,12 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "util.h"
 #include "ip.h"
 #include "icmp.h"
+
+#define ICMP_BUFSIZ IP_PAYLOAD_SIZE_MAX
 
 /**
  * ICMPヘッダ構造体
@@ -137,9 +140,69 @@ icmp_input(const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst, struct
         return;
     }
 
-    /* このステップでは登録した入力関数が呼び出されたことが分かればいいのでデバッグ出力のみ */
+    /* デバッグ出力 */
     debugf("%s => %s, len=%zu", ip_addr_ntop(src, addr1, sizeof(addr1)), ip_addr_ntop(dst, addr2, sizeof(addr2)), len);
     icmp_dump(data, len);
+
+    /* EchoReply メッセージの送信 */
+    switch (hdr->type) {
+        case ICMP_TYPE_ECHO:
+            /* Responds with the address of the received interface. */
+
+            /* Exercise11-3: ICMP の出力関数を呼び出す */
+            /* - メッセージ種別に ICMP_TYPE_ECHO_REPLY を指定 */
+            /* - その他のパラメータは受信メッセージに含まれる値をそのまま渡す */
+            /* - 送信元は Echo メッセージを受信したインターフェース (iface) のユニキャストアドレス */
+            /* - 宛先は Echo メッセージの送信元 (src) */
+            icmp_output(ICMP_TYPE_ECHOREPLY, hdr->code, hdr->values, (uint8_t *)(hdr + 1), len - sizeof(*hdr), iface->unicast, src);
+            break;
+        default:
+            /* ignore */
+            break;
+    }
+}
+
+/**
+ * ICMP の出力関数
+ * @param [in] type 種別
+ * @param [in] code コード
+ * @param [in] values Message Specific Field ※ネットワークバイトオーダー
+ * @param [in] data データのポインタ
+ * @param [in] len データサイズ
+ * @param [in] src 送信元IPアドレス
+ * @param [in] dst 宛先IPアドレス
+ * @return 結果
+ */
+int
+icmp_output(uint8_t type, uint8_t code, uint32_t values, const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst)
+{
+    uint8_t buf[ICMP_BUFSIZ]; /* ICMPメッセージ構成用のバッファ */
+    struct icmp_hdr *hdr;
+    size_t msg_len; /* ICMPメッセージの長さ (ヘッダ＋データ) */
+    char addr1[IP_ADDR_STR_LEN];
+    char addr2[IP_ADDR_STR_LEN];
+
+    hdr = (struct icmp_hdr *)buf; /* バッファの先頭箇所を ICMPヘッダでキャスト */
+
+    /* Exercise11-1: ICMPメッセージの生成 */
+    /* - ヘッダの各フィールドに値を設定 */
+    hdr->type = type;
+    hdr->code = code;
+    hdr->sum = 0;
+    hdr->values = values;
+    /* - ヘッダの直後にデータを配置(コピー) */
+    memcpy(hdr+1, data, len);
+    /* - ICMPメッセージ全体の長さを計算して msg_len に格納する */
+    msg_len = sizeof(*hdr) + len;
+    /* - チェックサムを計算してチェックサムフィールドに格納(あらかじめチェックサムフィールドを0にしておくのを忘れずに) */
+    hdr->sum = cksum16((uint16_t *)hdr, msg_len, 0);
+
+    debugf("%s => %s, len=%zu", ip_addr_ntop(src, addr1, sizeof(addr1)), ip_addr_ntop(dst, addr2, sizeof(addr2)), msg_len);
+    icmp_dump((uint8_t *)hdr, msg_len);
+
+    /* Exercise11-2: IPの出力関数を呼び出してメッセージを送信 */
+    /* - 戻り値をそのままこの関数の戻り値として返す */
+    return ip_output(IP_PROTOCOL_ICMP, buf, msg_len, src, dst);
 }
 
 /**
