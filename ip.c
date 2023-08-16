@@ -129,8 +129,8 @@ ip_dump(const uint8_t *data, size_t len)
     hl = hdr->vhl & 0x0f;
     /* IPヘッダ長･･･32bit(4byte)単位の値が格納されているので4倍して8bit(1byte)単位の値にする */
     hlen = hl << 2;
-    fprintf(stderr, "       vhl: 0x%02x [v: %u, hl: %u (%u)]\n", hdr->vhl, v, hl, hlen);
-    fprintf(stderr, "       tos: 0x%02x\n", hdr->tos);
+    fprintf(stderr, "        vhl: 0x%02x [v: %u, hl: %u (%u)]\n", hdr->vhl, v, hl, hlen);
+    fprintf(stderr, "        tos: 0x%02x\n", hdr->tos);
     /* 多バイト長(16bitや32bit)の数値データはバイトオーダの変換が必要 */
     total = ntoh16(hdr->total);
     /* トータル長からIPヘッダ長を引いたものが運んでいるデータ(ペイロード)の長さ */
