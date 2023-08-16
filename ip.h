@@ -22,6 +22,14 @@
 #define IP_ADDR_LEN 4
 #define IP_ADDR_STR_LEN 16 /* "ddd.ddd.ddd.ddd\0" */
 
+/* see https://www.iana.org/assignments/protocol-numbers/protocol-numbers.txt */
+/* IPプロトコル番号: ICMP */
+#define IP_PROTOCOL_ICMP    1
+/* IPプロトコル番号: TCP */
+#define IP_PROTOCOL_TCP     6
+/* IPプロトコル番号: UDP */
+#define IP_PROTOCOL_UDP    17
+
 /* IPアドレス用の型 */
 typedef uint32_t ip_addr_t;
 
@@ -61,6 +69,9 @@ ip_iface_select(ip_addr_t addr);
 
 extern ssize_t
 ip_output(uint8_t protocol, const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst);
+
+extern int
+ip_protocol_register(uint8_t type, void (*handler)(const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst, struct ip_iface *iface));
 
 extern int
 ip_init(void);

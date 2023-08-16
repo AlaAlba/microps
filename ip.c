@@ -14,7 +14,7 @@
 /**
  * IPヘッダ構造体
  * - この構造体のポインタにキャストすることで、バイト列をIPヘッダとみなしてアクセスできる
-*/
+ */
 struct ip_hdr {
     /* バージョン(4bit)とIPヘッダ長(4bit)をまとめて 8bit として扱う */
     uint8_t vhl;
@@ -40,11 +40,30 @@ struct ip_hdr {
     uint8_t options[];
 };
 
+/**
+ * プロトコル構造体
+ * IPの上位プロトコルを管理するための構造体
+ * ※ struct net_protocol とほぼ同じ
+ */
+struct ip_protocol {
+    /* 次のIPプロトコルへのポインタ */
+    struct ip_protocol *next;
+
+    /* IPプロトコルの種別 (IP_PROTOCOL_XXX) */
+    uint8_t type;
+
+    /* IPプロトコルの入力関数へのポインタ */
+    void (*handler)(const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst, struct ip_iface *iface);
+};
+
 const ip_addr_t IP_ADDR_ANY         = 0x00000000; /* 0.0.0.0 */
 const ip_addr_t IP_ADDR_BROADCAST   = 0xffffffff; /* 255.255.255.255 */
 
 /* NOTE: if you want to add/delete the entries after net_run(), you need protect these lists with a mutex */
 static struct ip_iface *ifaces;
+
+/* 登録されているIPプロトコルのリスト */
+static struct ip_protocol *protocols;
 
 /**
  * IPアドレスを文字列からネットワークバイトオーダのバイナリ値(ip_addr_t)に変換
@@ -213,11 +232,53 @@ ip_iface_select(ip_addr_t addr)
         }
     }
     return entry;
+}
 
+/**
+ * プロトコルの登録
+ * @param [in] type IPプロトコルの種別 (IP_PROTOCOL_XXX)
+ * @param [in,out] handler IPプロトコルの入力関数へのポインタ
+ * @return 結果
+ */
+/* NOTE: must not be call after net_run() */
+int
+ip_protocol_register(uint8_t type, void (*handler)(const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst, struct ip_iface *iface))
+{
+    struct ip_protocol *entry;
+
+    /* Exercise9-1: 重複登録の確認 */
+    /* - プロトコルリスト(protocols) を巡回 */
+    /*  - 指定された type のエントリが既に存在する場合はエラーを返す */
+    for (entry = protocols; entry; entry = entry->next) {
+        if (type == entry->type) {
+            errorf("already registered, type=0x%04x", type);
+            return -1;
+        }
+    }
+
+    /* Exercise9-2: プロトコルの登録 */
+    /* (1) 新しいプロトコルのエントリ用にメモリを確保 */
+    /*   - メモリ確保に失敗したらエラーを返す */
+    /* (2) プロトコルリスト(protocols) の先頭に挿入 */
+    entry = memory_alloc(sizeof(*entry));
+    if (!entry) {
+        errorf("memory_alloc() failure");
+        return -1;
+    }
+    entry->type = type;
+    entry->handler = handler;
+    entry->next = protocols;
+    protocols = entry;
+
+    infof("registered, type=%u", entry->type);
+    return 0;
 }
 
 /**
  * IPの入力関数
+ * @param [in] data データポインタ
+ * @param [in] len データサイズ
+ * @param [in,out] dev デバイス構造体
 */
 static void
 ip_input(const uint8_t *data, size_t len, struct net_device *dev)
@@ -227,6 +288,7 @@ ip_input(const uint8_t *data, size_t len, struct net_device *dev)
     uint16_t hlen, total, offset;
     struct ip_iface *iface;
     char addr[IP_ADDR_STR_LEN];
+    struct ip_protocol *proto;
 
     /* 入力データの長さがIPヘッダの最小サイズより小さい場合はエラー */
     if (len < IP_HDR_SIZE_MIN) {
@@ -299,6 +361,19 @@ ip_input(const uint8_t *data, size_t len, struct net_device *dev)
     debugf("dev=%s, iface=%s, protocol=%u, total=%u", 
         dev->name, ip_addr_ntop(iface->unicast, addr, sizeof(addr)), hdr->protocol, total);
     ip_dump(data, total);
+
+    /* Exercise9-3: プロトコルの検索 */
+    /* - プロトコルリスト (protocols) を巡回 */
+    /*  - IPヘッダのプロトコル番号と一致するプロトコルの入力関数を呼び出す (入力関数には IPデータグラムのペイロードを渡す) */
+    /*  - 入力関数から戻ったら return する */
+    /* - 合致するプロトコルが見つからない場合は何もしない */
+    for (proto = protocols; proto; proto = proto->next) {
+        if (proto->type == hdr->protocol) {
+            proto->handler( (uint8_t *)hdr + hlen, total - hlen, hdr->src, hdr->dst, iface);
+            return;
+        }
+    }
+    /* unsupported protocol */
 }
 
 /**
