@@ -151,6 +151,9 @@ ip_dump(const uint8_t *data, size_t len)
     funlockfile(stderr);
 }
 
+/**
+ * IPインターフェースを確保して設定
+ */
 struct ip_iface *
 ip_iface_alloc(const char *unicast, const char *netmask)
 {
