@@ -9,6 +9,7 @@
 #include "net.h"
 #include "ip.h"
 #include "icmp.h"
+#include "arp.h"
 
 /**
  * プロトコル構造体
@@ -192,6 +193,9 @@ net_device_get_iface(struct net_device *dev, int family)
     return entry;
 }
 
+/**
+ * デバイスへの出力
+ */
 int
 net_device_output(struct net_device *dev, uint16_t type, const uint8_t *data, size_t len, const void *dst)
 {
@@ -367,6 +371,12 @@ net_init(void)
     /* 割り込み機構の初期化 */
     if (intr_init() == -1) {
         errorf("intr_init() failure");
+        return -1;
+    }
+    
+    /* Exercise13-5: ARPの初期化 */
+    if (arp_init() == -1) {
+        errorf("arp_init() failure");
         return -1;
     }
 
