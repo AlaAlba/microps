@@ -10,6 +10,7 @@
 #include "util.h"
 #include "net.h"
 #include "ip.h"
+#include "arp.h"
 
 /**
  * IPヘッダ構造体
@@ -386,6 +387,7 @@ static int
 ip_output_device(struct ip_iface *iface, const uint8_t *data, size_t len, ip_addr_t dst)
 {
     uint8_t hwaddr[NET_DEVICE_ADDR_LEN] = {};
+    int ret;
 
     /* ARP によるアドレス解決が必要なデバイスのための処理 */
     if (NET_IFACE(iface)->dev->flags & NET_DEVICE_FLAG_NEED_ARP) {
@@ -394,9 +396,13 @@ ip_output_device(struct ip_iface *iface, const uint8_t *data, size_t len, ip_add
         if (dst == iface->broadcast || dst == IP_ADDR_BROADCAST) {
             memcpy(hwaddr, NET_IFACE(iface)->dev->broadcast, NET_IFACE(iface)->dev->alen);
         } else {
-            /* まだ ARP を実装していないのでエラーにしておく */
-            errorf("arp does not implement");
-            return -1;
+            /* IP データグラム出力時にアドレス解決を行う */
+            /* Exercise14-5: arp_resolve() を呼び出してアドレスを解決する */
+            /* - 戻り値が ARP_RESOLVE_FOUND でなかったらその値をこの関数の戻り値として返す */
+            ret = arp_resolve(NET_IFACE(iface), dst, &hwaddr[0]);
+            if (ret != ARP_RESOLVE_FOUND) {
+                return ret;
+            }
         }
     }
 
