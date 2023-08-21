@@ -277,6 +277,39 @@ arp_cache_insert(ip_addr_t pa, const uint8_t *ha)
     return cache;
 }
 
+/**
+ * ARP 要求の送信関数
+ * @param [in,out] iface インターフェース構造体のポインタ
+ * @param [in] tpa ターゲットプロトコルアドレス
+ */
+static int
+arp_request(struct net_iface *iface, ip_addr_t tpa)
+{
+    struct arp_ether_ip request;
+
+    /* Exercise15-2: ARP 要求のメッセージを生成する */
+    request.hdr.hrd = hton16(ARP_HDR_ETHER);
+    request.hdr.pro = hton16(ARP_PRO_IP);
+    request.hdr.hln = ETHER_ADDR_LEN;
+    request.hdr.pln = IP_ADDR_LEN;
+    request.hdr.op = hton16(ARP_OP_REQUEST);
+
+    // 送信元
+    memcpy(request.sha, iface->dev->addr, ETHER_ADDR_LEN);
+    memcpy(request.spa, &((struct ip_iface *)iface)->unicast, IP_ADDR_LEN);
+    // 目標
+    // 目標MACアドレスは分からないので「0」が格納される
+    memset(request.tha, 0, sizeof(ETHER_ADDR_LEN));
+    memcpy(request.tpa, &tpa, sizeof(IP_ADDR_LEN));
+
+    debugf("dev=%s, len=%zu", iface->dev->name, sizeof(request));
+    arp_dump((uint8_t *)&request, sizeof(request));
+
+    /* Exerice15-3: デバイスの送信関数を呼び出して ARP 要求のメッセージを送信する */
+    /* - 宛先はデバイスに設定されているブロードキャストアドレスとする */
+    /* - デバイスの送信関数の戻り値をこの関数の戻り値とする */
+    return net_device_output(iface->dev, ETHER_TYPE_ARP, (uint8_t *)&request, sizeof(request), iface->dev->broadcast);
+}
 
 /**
  * ARP 応答の送信
@@ -410,12 +443,41 @@ arp_resolve(struct net_iface *iface, ip_addr_t pa, uint8_t *ha)
     /* ARP キャッシュへのアクセスを mutex で保護 (アンロックを忘れずに) */
     mutex_lock(&mutex);
     cache = arp_cache_select(pa);
-    /* 見つからなければ ERROR を返す */
+    /* 見つからなければ ARP要求 */
     if (!cache) {
         debugf("cache not found, pa=%s", ip_addr_ntop(pa, addr1, sizeof(addr1)));
+        /* Exercise15-1: ARP キャッシュに問い合わせのエントリを作成 */
+        /* (1) 新しいエントリのスペースを確保 */
+        /* - スペースを確保できなかったら ERROR を返す */
+        cache = arp_cache_alloc();
+        if (!cache) {
+            mutex_unlock(&mutex);
+            errorf("arp_cache_alloc() failure");
+            return ARP_RESOLVE_ERROR;
+        }
+        /* (2) エントリの各フィールドに値を設定する */
+        /* - state ･･･ INCOMPLETE */
+        cache->state = ARP_CACHE_STATE_INCOMPLETE;
+        /* - pa ･･･ 引数で受け取ったプロトコルアドレス */
+        cache->pa = pa;
+        /* - ha ･･･ 未設定 */
+        /* - timestamp ･･･ 現在時刻(gettimeofday() で取得) */
+        gettimeofday(&cache->timestamp, NULL);
+
         mutex_unlock(&mutex);
-        return ARP_RESOLVE_ERROR;
+        /* ARP 要求の送信関数を呼び出す */
+        arp_request(iface, pa);
+        /* 問い合わせ中なので INCOMPLETE を返す */
+        return ARP_RESOLVE_INCOMPLETE;
     }
+    /* 見つかったエントリが INCOMPLETE のままだったらパケロスしているかもしれないので */
+    /* 念のため再送する。タイムスタンプは更新しない。 */
+    if (cache->state == ARP_CACHE_STATE_INCOMPLETE) {
+        mutex_unlock(&mutex);
+        arp_request(iface, pa); /* just in case packet loss */
+        return ARP_RESOLVE_INCOMPLETE;
+    }
+
     /* 見つかったハードウェアアドレスをコピー */
     memcpy(ha, cache->ha, ETHER_ADDR_LEN);
     mutex_unlock(&mutex);
