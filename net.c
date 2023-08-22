@@ -2,6 +2,10 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#ifndef __USE_MISC
+#define __USE_MISC /* TODO: 暫定 timersub用 intelisenceが効かない */
+#endif
+#include <sys/time.h>
 
 #include "platform.h"
 
@@ -14,7 +18,7 @@
 /**
  * プロトコル構造体
  * - 連結リスト
-*/
+ */
 struct net_protocol {
     /* 次のプロトコルへのポインタ */
     struct net_protocol *next;
@@ -32,11 +36,26 @@ struct net_protocol {
 /**
  * 受信キューのエントリの構造体
  * - 受信データと付随する情報（メタデータ）を格納
-*/
+ */
 struct net_protocol_queue_entry {
     struct net_device *dev;
     size_t len;
     uint8_t data[];
+};
+
+/**
+ * タイマーの構造体
+ * (リストで管理)
+ */
+struct net_timer {
+    /* 次のタイマーへのポインタ */
+    struct net_timer *next;
+    /* 発火のインターバル */
+    struct timeval interval;
+    /* 最後の発火時間 */
+    struct timeval last;
+    /* 発火時に呼び出す関数へのポインタ */
+    void (*handler)(void);
 };
 
 /* NOTE: if you want to add/delete the entries after net_run(), you need to protect these lists with a mutex. */
@@ -44,6 +63,8 @@ struct net_protocol_queue_entry {
 static struct net_device *devices;
 /* 登録されているプロトコルのリスト */
 static struct net_protocol *protocols;
+/* タイマーリスト */
+static struct net_timer *timers;
 
 /**
  * デバイスの生成
@@ -256,6 +277,66 @@ net_protocol_register(uint16_t type, void (*handler)(const uint8_t *data, size_t
     proto->next = protocols;
     protocols = proto;
     infof("registered, type=0x%04x", type);
+    return 0;
+}
+
+/**
+ * タイマーの登録
+ * @param [in] interval 発火のインターバル
+ * @param [in,out] handler 発火時に呼び出す関数ポインタ
+ * @return 結果
+ */
+/* NOTE: must not be call after net_run() */
+int
+net_timer_register(struct timeval interval, void (*handler)(void))
+{
+    struct net_timer *timer;
+
+    /* Exercise16-1: タイマーの登録 */
+    /* (1) タイマー構造体のメモリを確保 */
+    timer = memory_alloc(sizeof(*timer));
+    /* - 失敗した場合はエラーを返す */
+    if (!timer) {
+        errorf("memory_alloc() failure");
+        return -1;
+    }
+    /* (2) タイマーに値を設定 */
+    /* - 最後の発火時間には現在時刻を設定 */
+    gettimeofday(&timer->last, NULL);
+    timer->interval = interval;
+    timer->handler = handler;
+    /* (3) タイマーリストの先頭に追加 */
+    timer->next = timers;
+    timers = timer;
+
+    infof("registered: interval={%d, %d}", interval.tv_sec, interval.tv_usec);
+    return 0;
+}
+
+/**
+ * タイマーの確認と発火
+ * @return 結果
+ */
+int
+net_timer_handler(void)
+{
+    struct net_timer *timer;
+    struct timeval now, diff;
+
+    /* タイマーリストを巡回 */
+    for (timer = timers; timer; timer = timer->next) {
+        /* 最後の発火からの経過時間を求める */
+        gettimeofday(&now, NULL);
+        timersub(&now, &timer->last, &diff);
+        /* 発火時刻を迎えているかどうかの確認 */
+        if (timercmp(&timer->interval, &diff, <) != 0) { /* ture (!0) or false (0) */
+            /* Exercise16-2: タイマーの発火 */
+            /* - 登録されている関数を呼び出す */
+            timer->handler();
+            /* - 最後の発火時間を更新 */
+            timer->last = now;
+        }
+    }
     return 0;
 }
 
