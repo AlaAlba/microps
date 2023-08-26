@@ -52,9 +52,13 @@ mutex_unlock(mutex_t *mutex)
  * Interrupt
 */
 
+/* 割り込み番号ベース */
+/* Linux では SIGRTMIN～SIGRTMAX(34～64) までのシグナルをアプリケーションが任意の目的で利用可能 */
+/* SIGRTMIN(34) は glibc が内部的に利用しているため +1 した番号から利用 */
 #define INTR_IRQ_BASE (SIGRTMIN+1)
 #define INTR_IRQ_SOFTIRQ SIGUSR1
 
+/* IRQ番号共有可能 */
 #define INTR_IRQ_SHARED 0x0001
 
 extern int

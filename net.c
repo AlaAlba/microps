@@ -340,6 +340,14 @@ net_timer_handler(void)
     return 0;
 }
 
+/**
+ * デバイスが受信したパケットをプロトコルスタックに渡す
+ * - プロトコルスタックへのデータの入口であり、デバイスドライバから呼び出されることを想定
+ * @param [in] type プロトコルの種別
+ * @param [in] data データポインタ
+ * @param [in] len データサイズ
+ * @param [in,out] dev デバイス構造体ポインタ
+ */
 int
 net_input_handler(uint16_t type, const uint8_t *data, size_t len, struct net_device *dev)
 {
@@ -383,6 +391,9 @@ net_input_handler(uint16_t type, const uint8_t *data, size_t len, struct net_dev
     return 0;
 }
 
+/**
+ * プロトコルスタックの起動
+*/
 int
 net_run(void)
 {
@@ -403,6 +414,9 @@ net_run(void)
     return 0;
 }
 
+/**
+ * ソフトウェア割り込みハンドラ
+*/
 int
 net_softirq_handler(void)
 {
@@ -429,6 +443,9 @@ net_softirq_handler(void)
     return 0;
 }
 
+/**
+ * プロトコルスタックの停止
+ */
 void
 net_shutdown(void)
 {
@@ -446,6 +463,9 @@ net_shutdown(void)
     debugf("shutting down");
 }
 
+/**
+ * プロトコルスタックの初期化
+*/
 int
 net_init(void)
 {

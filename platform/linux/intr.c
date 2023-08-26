@@ -58,6 +58,12 @@ static pthread_barrier_t barrier;
 
 /**
  * 割り込みハンドラの登録
+ * @param [in] irq IRQ番号
+ * @param [in,out] handler 割り込みハンドラ関数ポインタ
+ * @param [in] flags フラグ
+ * @param [in,out] name デバイス名
+ * @param [in,out] dev デバイス構造体ポインタ
+ * @return 結果
 */
 int
 intr_request_irq(unsigned int irq, int (*handler)(unsigned int irq, void *dev), int flags, const char *name, void *dev)

@@ -105,11 +105,6 @@ struct net_iface {
 extern struct net_device *
 net_device_alloc(void);
 
-/**
- * デバイスの登録
- * @param [in,out] dev デバイス構造体ポインタ
- * @return 結果
- */
 extern int
 net_device_register(struct net_device *dev);
 
@@ -119,18 +114,9 @@ net_device_add_iface(struct net_device *dev, struct net_iface *iface);
 extern struct net_iface *
 net_device_get_iface(struct net_device *dev, int family);
 
-/**
- * デバイスへの出力
- */
 extern int
 net_device_output(struct net_device *dev, uint16_t type, const uint8_t *data, size_t len, const void *dst);
 
-/**
- * プロトコルの登録
- * @param [in] type Ethernet Type Number (NET_PROTOCOL_TYPE_XXX)
- * @param [in,out] handler プロトコルの入力関数ポインタ
- * @return 結果
- */
 extern int
 net_protocol_register(uint16_t type, void (*handler)(const uint8_t *data, size_t len, struct net_device *dev));
 
@@ -140,38 +126,18 @@ net_timer_register(struct timeval interval, void (*handler)(void));
 extern int
 net_timer_handler(void);
 
-/**
- * デバイスが受信したパケットをプロトコルスタックに渡す
- * - プロトコルスタックへのデータの入口であり、デバイスドライバから呼び出されることを想定
- * @param [in] type プロトコルの種別
- * @param [in] data データポインタ
- * @param [in] len データサイズ
- * @param [in,out] dev デバイス構造体ポインタ
- */
 extern int
 net_input_handler(uint16_t type, const uint8_t *data, size_t len, struct net_device *dev);
 
-/**
- * ソフトウェア割り込みハンドラ
-*/
 extern int
 net_softirq_handler(void);
 
-/**
- * プロトコルスタックの起動
-*/
 extern int
 net_run(void);
 
-/**
- * プロトコルスタックの停止
- */
 extern void
 net_shutdown(void);
 
-/**
- * プロトコルスタックの初期化
-*/
 extern int
 net_init(void);
 

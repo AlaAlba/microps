@@ -11,6 +11,9 @@
 
 #define DUMMY_IRQ INTR_IRQ_BASE
 
+/**
+ * 送信関数
+*/
 static int
 dummy_transmit(struct net_device *dev, uint16_t type, const uint8_t *data, size_t len, const void *dst)
 {
@@ -22,6 +25,9 @@ dummy_transmit(struct net_device *dev, uint16_t type, const uint8_t *data, size_
     return 0;
 }
 
+/**
+ * 割り込みハンドラ
+ */
 static int
 dummy_isr(unsigned int irq, void *id)
 {
@@ -35,6 +41,9 @@ static struct net_device_ops dummy_ops = {
     .transmit = dummy_transmit, /* 送信関数のみ設定 */
 };
 
+/**
+ * ダミーデバイスの初期化
+ */
 struct net_device *
 dummy_init(void)
 {
