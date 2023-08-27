@@ -23,7 +23,9 @@ RUN groupadd --gid $USER_GID $USERNAME \
     && apt-get install -y git \
     && apt-get install -y iproute2 \
     && apt-get install -y iputils-ping \
-    && apt-get install -y netcat-openbsd
+    && apt-get install -y netcat-openbsd \
+    && apt-get install -y iptables \
+    && apt-get install -y net-tools
 
 # [Optional] Set the default user. Omit if you want to keep the default as root.
 USER $USERNAME
