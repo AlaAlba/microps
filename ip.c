@@ -57,6 +57,22 @@ struct ip_protocol {
     void (*handler)(const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst, struct ip_iface *iface);
 };
 
+/**
+ * 経路情報構造体
+ */
+struct ip_route {
+    /* 次の経路情報へのポインタ */
+    struct ip_route *next;
+    /* ネットワークアドレス */
+    ip_addr_t network;
+    /* サブネットマスク */
+    ip_addr_t netmask;
+    /* 次の中継先のアドレス(なければ IP_ADDR_ANY) */
+    ip_addr_t nexthop;
+    /* この経路への送信に使うインターフェース */
+    struct ip_iface *iface;
+};
+
 const ip_addr_t IP_ADDR_ANY         = 0x00000000; /* 0.0.0.0 */
 const ip_addr_t IP_ADDR_BROADCAST   = 0xffffffff; /* 255.255.255.255 */
 
@@ -65,6 +81,9 @@ static struct ip_iface *ifaces;
 
 /* 登録されているIPプロトコルのリスト */
 static struct ip_protocol *protocols;
+
+/* 経路情報のリスト (ルーティングテーブル) */
+static struct ip_route *routes;
 
 /**
  * IPアドレスを文字列からネットワークバイトオーダのバイナリ値(ip_addr_t)に変換
@@ -153,6 +172,120 @@ ip_dump(const uint8_t *data, size_t len)
 }
 
 /**
+ * 経路情報の登録
+ * @param [in] network ネットワークアドレス
+ * @param [in] netmask　サブネットマスク
+ * @param [in] nexthop ネクストホップ（次の中継先のアドレス)
+ * @param [in,out] iface IPインターフェース構造体ポインタ
+ * @return 登録した経路情報
+ */
+/* NOTE: must not be call after net_run() */
+static struct ip_route *
+ip_route_add(ip_addr_t network, ip_addr_t netmask, ip_addr_t nexthop, struct ip_iface *iface)
+{
+    struct ip_route *route;
+    char addr1[IP_ADDR_STR_LEN];
+    char addr2[IP_ADDR_STR_LEN];
+    char addr3[IP_ADDR_STR_LEN];
+    char addr4[IP_ADDR_STR_LEN];
+
+    /* Exercise17-1: 経路情報の登録 */
+    /* - 新しい経路情報を作成してルーティングテーブルへ追加する */
+    route = memory_alloc(sizeof(*route));
+    if (!route) {
+        errorf("memory_alloc() failure");
+        return NULL;
+    }
+    route->network = network;
+    route->netmask = netmask;
+    route->nexthop = nexthop;
+    route->iface = iface;
+
+    route->next = routes;
+    routes = route;
+
+    infof("route added: network=%s, netmask=%s, nexthop=%s, iface=%s, dev=%s",
+        ip_addr_ntop(route->network, addr1, sizeof(addr1)),
+        ip_addr_ntop(route->netmask, addr2, sizeof(addr2)),
+        ip_addr_ntop(route->nexthop, addr3, sizeof(addr3)),
+        ip_addr_ntop(route->iface->unicast, addr4, sizeof(addr4)),
+        NET_IFACE(iface)->dev->name
+    );
+
+    return route;
+}
+
+/**
+ * 経路情報の検索
+ * @param [in] dst　宛先IPアドレス
+ * @return 経路情報
+ */
+static struct ip_route *
+ip_route_lookup(ip_addr_t dst)
+{
+    struct ip_route *route, *candidate = NULL;
+
+    /* ルーティングテーブルを巡回 */
+    for (route = routes; route; route = route->next) {
+        /* 宛先が経路情報のネットワークに含まれているか確認 */
+        if ((dst & route->netmask) == route->network) {
+            /* サブネットマスクがより長く一致する経路を選択する(ロンゲストマッチ) */
+            /* 長く一致する方がより詳細な経路情報となる */
+            if (!candidate || ntoh32(candidate->netmask) < ntoh32(route->netmask)) {
+                /* この時点で一番有力な候補 */
+                candidate = route;
+            }
+        }
+    }
+    /* ロンゲストマッチで見つけた経路情報を返す */
+    return candidate;
+}
+
+/**
+ * デフォルトゲートウェイの登録
+ * @param [in,out] iface IPインターフェース構造体ポインタ
+ * @param [in,out] gateway デフォルトゲートウェイのIPアドレス(文字列)
+ * @return 結果
+ */
+/* NOTE: must not be call after net_run() */
+int
+ip_route_set_default_gateway(struct ip_iface *iface, const char *gateway)
+{
+    ip_addr_t gw;
+
+    /* デフォルトゲートウェイのIPアドレスを文字列からバイナリ値へ変換 */
+    if (ip_addr_pton(gateway, &gw) == -1) {
+        errorf("ip_addr_pton() failure, addr=%s", gateway);
+        return -1;
+    }
+    /* 0.0.0.0/0 のサブネットワークへの経路情報として登録する */
+    if (!ip_route_add(IP_ADDR_ANY, IP_ADDR_ANY, gw, iface)) {
+        errorf("ip_route_add() failure");
+        return -1;
+    }
+    return 0;
+}
+
+/**
+ * 経路情報からインターフェースを取得
+ * @param [in] dst 宛先IPアドレス
+ * @return IPインターフェース構造体ポインタ。経路情報が見つからなければNULLを返す。
+ */
+struct ip_iface *
+ip_route_get_iface(ip_addr_t dst)
+{
+    struct ip_route *route;
+
+    route = ip_route_lookup(dst);
+    if (!route) {
+        return NULL;
+    }
+
+    /* 経路情報の中からインターフェースを返す */
+    return route->iface;
+}
+
+/**
  * IPインターフェースを確保して設定
  */
 struct ip_iface *
@@ -173,14 +306,14 @@ ip_iface_alloc(const char *unicast, const char *netmask)
     /* (1) iface->unicast: 引数 unicast を文字列からバイナリ値に変換して設定する */
     /*   - 変換に失敗した場合はエラーを返す (不要になった iface のメモリ解放をわすれずに) */
     if (ip_addr_pton(unicast, &iface->unicast) == -1) {
-        errorf("ip_addr_pton() failure, unicast");
+        errorf("ip_addr_pton() failure, addr=%s", unicast);
         memory_free(iface);
         return NULL;
     }
     /* (2) iface->netmask: 引数 netmask を文字列からバイナリ値に変換して設定する */
     /*    - 変換に失敗した場合はエラーを返す (不要になった iface のメモリ解放を忘れずに) */
     if (ip_addr_pton(netmask, &iface->netmask) == -1) {
-        errorf("ip_addr_pton() failure, netmask");
+        errorf("ip_addr_pton() failure, addr=%s", netmask);
         memory_free(iface);
         return NULL;
     }
@@ -201,13 +334,19 @@ ip_iface_register(struct net_device *dev, struct ip_iface *iface)
     char addr2[IP_ADDR_STR_LEN];
     char addr3[IP_ADDR_STR_LEN];
 
-    /* Exercise7-4: IPインターフェースの登録 */
+    /* IPインターフェースの登録 */
     /* (1) デバイスにIPインターフェース (iface) を登録する */
-    /*    - エラーが返されたらこの関数もエラーを返す */
     if (net_device_add_iface(dev, NET_IFACE(iface)) == -1) {
         errorf("net_device_add_iface() failure");
         return -1;
     }
+
+    /* インターフェース登録時にそのネットワーク宛ての経路情報を自動で登録する */
+    if (!ip_route_add(iface->unicast & iface->netmask, iface->netmask, IP_ADDR_ANY, iface)) {
+        errorf("ip_route_add() failure");
+        return -1;
+    }
+
     /* (2) IPインターフェースのリスト (ifaces) の先頭に iface を挿入する */
     iface->next = ifaces;
     ifaces = iface;
@@ -255,7 +394,7 @@ ip_protocol_register(uint8_t type, void (*handler)(const uint8_t *data, size_t l
     /*  - 指定された type のエントリが既に存在する場合はエラーを返す */
     for (entry = protocols; entry; entry = entry->next) {
         if (type == entry->type) {
-            errorf("already registered, type=0x%04x", type);
+            errorf("already exists, type=%u", type);
             return -1;
         }
     }
@@ -308,7 +447,7 @@ ip_input(const uint8_t *data, size_t len, struct net_device *dev)
      */
     v = (hdr->vhl & 0xf0) >> 4;
     if (v != IP_VERSION_IPV4) {
-        errorf("not IPV4");
+        errorf("ip version error: v=%u", v);
         return;
     }
 
@@ -317,7 +456,7 @@ ip_input(const uint8_t *data, size_t len, struct net_device *dev)
      */
     hlen = (hdr->vhl & 0x0f) << 2; /* IPヘッダ長･･･32bit(4byte)単位の値が格納されているので4倍して8bit(1byte)単位の値にする */
     if (len < hlen) {
-        errorf("smaller than header length");
+        errorf("header length error: len=%zu < hlen=%u", len, hlen);
         return;
     }
 
@@ -326,7 +465,7 @@ ip_input(const uint8_t *data, size_t len, struct net_device *dev)
      */
     total = ntoh16(hdr->total);
     if (len < total) {
-        errorf("smaller than total length");
+        errorf("total length error: len=%zu < total=%u", len, total);
         return;
     }
 
@@ -334,7 +473,7 @@ ip_input(const uint8_t *data, size_t len, struct net_device *dev)
      * cksum16() での検証に失敗した場合はエラーメッセージを出力して中断
      */
     if (cksum16((uint16_t *)hdr, hlen, 0) != 0) {
-        errorf("checksum error");
+        errorf("checksum error: sum=0x%04x, verify=0x%04x", ntoh16(hdr->sum), ntoh16(cksum16((uint16_t *)hdr, hlen, -hdr->sum)));
         return;
     }
 
@@ -413,10 +552,10 @@ ip_output_device(struct ip_iface *iface, const uint8_t *data, size_t len, ip_add
 }
 
 /**
- * IPデータグラムの生成
+ * IPデータグラムの生成＆送信関数
 */
 static ssize_t
-ip_output_core(struct ip_iface *iface, uint8_t protocol, const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst, uint16_t id, uint16_t offset)
+ip_output_core(struct ip_iface *iface, uint8_t protocol, const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst, ip_addr_t nexthop, uint16_t id, uint16_t offset)
 {
     uint8_t buf[IP_TOTAL_SIZE_MAX];
     struct ip_hdr *hdr;
@@ -453,7 +592,7 @@ ip_output_core(struct ip_iface *iface, uint8_t protocol, const uint8_t *data, si
         NET_IFACE(iface)->dev->name, ip_addr_ntop(dst, addr, sizeof(addr)), protocol, total);
     ip_dump(buf, total);
     /* 生成した IPデータグラムを実際にデバイスから送信するための関数に渡す */
-    return ip_output_device(iface, buf, total, dst);
+    return ip_output_device(iface, buf, total, nexthop);
 }
 
 /**
@@ -478,39 +617,32 @@ ip_generate_id(void)
 ssize_t
 ip_output(uint8_t protocol, const uint8_t *data, size_t len, ip_addr_t src, ip_addr_t dst)
 {
+    struct ip_route *route;
     struct ip_iface *iface;
     char addr[IP_ADDR_STR_LEN];
+    ip_addr_t nexthop;
     uint16_t id;
 
-    /* まだIPルーティングを実装していないので送信元IPアドレスが指定されない場合はエラーを返す */
-    if (src == IP_ADDR_ANY) {
-        errorf("ip routing does not implement");
+    /* 送信元アドレスが指定されない場合、ブロードキャストアドレス宛への送信はできない */
+    if (src == IP_ADDR_ANY && dst == IP_ADDR_BROADCAST) {
+        errorf("source address is require for broadcast address");
         return -1;
     }
-    else {
-        /* NOTE: I'll rewrite this block later. */
 
-        /* Exercise8-1: IPインターフェースの検索 */
-        /* - 送信元IPアドレス(src)に対応するIPインターフェースを検索 */
-        /*    - インターフェースが見つからない場合はエラーを返す */
-        iface = ip_iface_select(src);
-        if (iface == NULL) {
-            errorf("src ip address not found.");
-            return -1;
-        }
-
-        /* Exercise8-2: 宛先へ到達可能か確認 */
-        /* - 宛先アドレス(dst) が以下の条件に合致しない場合エラーを返す(到達不能) */
-        /* インターフェースのネットワークアドレスの範囲に含まれる */
-        /* ブロードキャストIPアドレス(255.255.255.255) */
-         if (
-            ((dst & iface->netmask) != (iface->unicast & iface->netmask))
-            && (dst != IP_ADDR_BROADCAST)
-        ) {
-            errorf("not reached, dst=%s", ip_addr_ntop(src, addr, sizeof(addr)));
-            return -1;
-        }
+    /* 宛先アドレスへの経路情報を取得 */
+    route = ip_route_lookup(dst);
+    if (!route) {
+        errorf("no route to host, addr=%s", ip_addr_ntop(dst, addr, sizeof(addr)));
+        return -1;
     }
+    /* インターフェースのIPアドレスと異なるIPアドレスで送信できないように制限（強いエンドシステム） */
+    iface = route->iface;
+    if (src != IP_ADDR_ANY && src != iface->unicast) {
+        errorf("unable to output with specified source address, addr=%s", ip_addr_ntop(src, addr, sizeof(addr)));
+        return -1;
+    }
+    /* nexthop ･･･ IPパケットの次の送り先 (IPヘッダの宛先とは異なる) */
+    nexthop = (route->nexthop != IP_ADDR_ANY) ? route->nexthop : dst;
 
     /* フラグメンテーションをサポートしないので MTU を超える場合はエラーを返す */
     if (NET_IFACE(iface)->dev->mtu < IP_HDR_SIZE_MIN + len) {
@@ -523,7 +655,7 @@ ip_output(uint8_t protocol, const uint8_t *data, size_t len, ip_addr_t src, ip_a
     id = ip_generate_id();
     
     /* IPデータグラムを生成して出力する */
-    if (ip_output_core(iface, protocol, data, len, iface->unicast, dst, id, 0) == -1) {
+    if (ip_output_core(iface, protocol, data, len, iface->unicast, dst, nexthop, id, 0) == -1) {
         errorf("ip_output_core() failure");
         return -1;
     }
