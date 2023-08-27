@@ -14,6 +14,7 @@
 #include "ip.h"
 #include "icmp.h"
 #include "arp.h"
+#include "udp.h"
 
 /**
  * プロトコル構造体
@@ -490,6 +491,12 @@ net_init(void)
     /* Exercise9-5: ICMPの初期化 */
     if (icmp_init() == -1) {
         errorf("icmp_init() failure");
+        return -1;
+    }
+
+    /* Exercise18-4: UDPの初期化関数を呼び出す */
+    if (udp_init() == -1) {
+        errorf("udp_init() failure");
         return -1;
     }
 

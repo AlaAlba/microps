@@ -22,6 +22,9 @@
 #define IP_ADDR_LEN 4
 #define IP_ADDR_STR_LEN 16 /* "ddd.ddd.ddd.ddd\0" */
 
+/* IPエンドポイントの文字列に必要なバッファのサイズ(終端文字を含む) */
+#define IP_ENDPOINT_STR_LEN (IP_ADDR_STR_LEN + 6) /* xxx.xxx.xxx.xxx:yyyyy\n */
+
 /* see https://www.iana.org/assignments/protocol-numbers/protocol-numbers.txt */
 /* IPプロトコル番号: ICMP */
 #define IP_PROTOCOL_ICMP    1
@@ -34,8 +37,18 @@
 typedef uint32_t ip_addr_t;
 
 /**
+ * IPエンドポイント構造体
+ */
+struct ip_endpoint {
+    /* IPアドレス */
+    ip_addr_t addr;
+    /* ポート番号 */
+    uint16_t port;
+};
+
+/**
  * IPインターフェース
-*/
+ */
 struct ip_iface {
     /* インターフェース構造体 */
     struct net_iface iface;
@@ -57,6 +70,12 @@ ip_addr_pton(const char *p, ip_addr_t *n);
 
 extern char *
 ip_addr_ntop(ip_addr_t n, char *p, size_t size);
+
+extern int
+ip_endpoint_pton(const char *p, struct ip_endpoint *n);
+
+extern char *
+ip_endpoint_ntop(const struct ip_endpoint *n, char *p, size_t size);
 
 extern int
 ip_route_set_default_gateway(struct ip_iface *iface, const char *gateway);
