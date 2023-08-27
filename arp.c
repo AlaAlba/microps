@@ -489,7 +489,7 @@ arp_resolve(struct net_iface *iface, ip_addr_t pa, uint8_t *ha)
 }
 
 /**
- * ARP のタイマーハンドラの登録
+ * ARP のタイマーハンドラ
  */
 static void
 arp_timer_handler(void)
