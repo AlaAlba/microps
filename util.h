@@ -19,9 +19,12 @@
 /*
  * Array
  */
-
+/* 配列の要素数を返す */
 #define countof(x) ((sizeof(x) / sizeof(*x)))
+/* 配列の最後の要素のポインタ + 1 ※最後の要素は配列の先頭アドレスに要素数を加算したアドレスから１つマイナスしたアドレス */
 #define tailof(x) (x + countof(x))
+/* インデックス x: 配列, y: 要素 */
+/* 要素のアドレス(y) から 配列の先頭アドレス(x) を引いたものを1要素のサイズ（sizeof(*y)）で割っている */
 #define indexof(x, y) (((uintptr_t)y - (uintptr_t)x) / sizeof(*y))
 
 /*
