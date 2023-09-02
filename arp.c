@@ -235,7 +235,7 @@ arp_cache_update(ip_addr_t pa, const uint8_t *ha)
         return NULL;
     }
     /* (2) エントリの情報を更新する */
-    memcpy(&cache->ha, ha, sizeof(ETHER_ADDR_LEN));
+    memcpy(cache->ha, ha, ETHER_ADDR_LEN);
     /* cache->pa = pa; */ /* pa で検索しているので同じ値 */
     /* - state は解決済み(RESOLVED)の状態にする */
     cache->state = ARP_CACHE_STATE_RESOLVED;
