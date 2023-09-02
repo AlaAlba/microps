@@ -117,10 +117,10 @@ udp_pcb_alloc(void)
             pcb->state = UDP_PCB_STATE_OPEN;
             return pcb;
         }
+    }
         /* 空きがなければ NULL を返す */
         return NULL;
     }
-}
 
 /**
  * コントロールブロックの解放

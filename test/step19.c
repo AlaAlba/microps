@@ -142,6 +142,7 @@ main(int argc, char *argv[])
         /* 何もせず待ち続ける */
         sleep(1);
     }
+    udp_close(soc);
     cleanup();
     return 0;
 }
