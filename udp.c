@@ -19,6 +19,11 @@
 #define UDP_PCB_STATE_OPEN      1
 #define UDP_PCB_STATE_CLOSING   2
 
+/* UDPの送信元ポート番号の範囲 */
+/* see https://tools.ietf.org/html/rfc6335 */
+#define UDP_SOURCE_PORT_MIN 49152
+#define UDP_SOURCE_PORT_MAX 65535
+
 /**
  * 疑似ヘッダの構造体（チェックサム計算時に使用する）
  */
@@ -58,6 +63,8 @@ struct udp_pcb {
     /* 自分のアドレス＆ポート番号 */
     struct ip_endpoint local;
     struct queue_head queue; /* receive queue */
+    /* wait カウント (PCBを使用中のスレッドの数) */
+    int wc;
 };
 
 /**
@@ -118,9 +125,9 @@ udp_pcb_alloc(void)
             return pcb;
         }
     }
-        /* 空きがなければ NULL を返す */
-        return NULL;
-    }
+    /* 空きがなければ NULL を返す */
+    return NULL;
+}
 
 /**
  * コントロールブロックの解放
@@ -130,6 +137,12 @@ static void
 udp_pcb_release(struct udp_pcb *pcb)
 {
     struct queue_entry *entry;
+
+    /* wait カウントが 0 でなかったら解放できないので CLOSING 状態にして抜ける */
+    if (pcb->wc) {
+        pcb->state = UDP_PCB_STATE_CLOSING;
+        return;
+    }
 
     /* 値をクリア */
     pcb->state = UDP_PCB_STATE_FREE;
@@ -435,4 +448,130 @@ udp_bind(int id, struct ip_endpoint *local)
     debugf("bound, id=%d, local=%s", id, ip_endpoint_ntop(&pcb->local, ep1, sizeof(ep1)));
     mutex_unlock(&mutex);
     return 0;
+}
+
+/**
+ * UDP の送信 API
+ * @param [in] id PCBのインデックス
+ * @param [in,out] data 送信データ
+ * @param [in] len データサイズ
+ * @param [in,out] foreign 送信先エンドポイント構造体ポインタ
+ * @return
+ */
+ssize_t
+udp_sendto(int id, uint8_t *data, size_t len, struct ip_endpoint *foreign)
+{
+    struct udp_pcb *pcb;
+    struct ip_endpoint local;
+    struct ip_iface *iface;
+    char addr[IP_ADDR_STR_LEN];
+    uint32_t p;
+
+    /* PCB へのアクセスを mutex で保護 (アンロックを忘れずに) */
+    mutex_lock(&mutex);
+    pcb = udp_pcb_get(id);
+    /* ID から PCB のポインタを取得 */
+    if (!pcb) {
+        errorf("pcb not found, id=%d", id);
+        mutex_unlock(&mutex);
+        return -1;
+    }
+    local.addr = pcb->local.addr;
+    if (local.addr == IP_ADDR_ANY) {
+        /* 自分の使うアドレスがワイルドカードだったら宛先アドレスに応じて */
+        /* 送信元アドレスを自動的に選択する */
+        /* IP の経路情報から宛先に到達可能なインターフェースを取得 */
+        iface = ip_route_get_iface(foreign->addr);
+        if (!iface) {
+            errorf("iface not found that can reach foreign address, addr=%s",
+                ip_addr_ntop(foreign->addr, addr, sizeof(addr)));
+            mutex_unlock(&mutex);
+            return -1;
+        }
+        /* 取得したインターフェースのアドレスを使う */
+        local.addr = iface->unicast;
+        debugf("select local address, addr=%s", ip_addr_ntop(local.addr, addr, sizeof(addr)));
+    }
+    /* 自分の使うポート番号が設定されていなかったら送信元ポート番号を自動的に選択する */
+    if (!pcb->local.port) {
+        /* 送信元ポートの自動選択 */
+        
+        /* 送信元ポート番号の範囲から使用可能なポートを探して、PCBに割り当てる（使用されていないポートを探す） */
+        for (p = UDP_SOURCE_PORT_MIN; p <= UDP_SOURCE_PORT_MAX; p++) {
+            if (!udp_pcb_select(local.addr, hton16(p))) {
+                /* このPCBで使用するポートに設定する */
+                pcb->local.port = hton16(p);
+                debugf("dynamic assign local port, port=%d", p);
+                break;
+            }
+        }
+        /* 使用可能なポートがなかったらエラーを返す */
+        if (!pcb->local.port) {
+            debugf("failed to dynamic assign local port, addr=%s", ip_addr_ntop(local.addr, addr, sizeof(addr)));
+            mutex_unlock(&mutex);
+            return -1;
+        }
+    }
+    local.port = pcb->local.port;
+    mutex_unlock(&mutex);
+    return udp_output(&local, foreign, data, len);
+}
+
+/**
+ * UDP の受信 API
+ * @param [in] id ID（pcbsのインデックス)
+ * @param [in,out] buf 受信データ格納バッファポインタ
+ * @param [in] size バッファサイズ 
+ * @param [in,out] foreign 送信元のエンドポイントをコピーして返す
+ * @return データサイズ
+ */
+ssize_t
+udp_recvfrom(int id, uint8_t *buf, size_t size, struct ip_endpoint *foreign)
+{
+    struct udp_pcb *pcb;
+    struct udp_queue_entry *entry;
+    ssize_t len;
+
+    /* PCB へのアクセスを mutex で保護 */
+    mutex_lock(&mutex);
+    /* ID から PCB のポインタを取得 */
+    pcb = udp_pcb_get(id);
+    if (!pcb) {
+        errorf("pcb not found, id=%d", id);
+        mutex_unlock(&mutex);
+        return -1;
+    }
+
+    /* 受信キューからエントリを取り出す */
+    while (1) {
+        entry = queue_pop(&pcb->queue);
+        if (entry) {
+            /* エントリを取り出せたらループから抜ける */
+            break;
+        }
+        pcb->wc++;
+        /* 受信キューにエントリが追加されるのを待つ (1秒おきにキューを確認) */
+        mutex_unlock(&mutex);
+        sleep(1);
+        mutex_lock(&mutex);
+        pcb->wc--;
+        /* PCB が CLOSING 状態になっていたら PCB を解放してエラーを返す */
+        if (pcb->state == UDP_PCB_STATE_CLOSING) {
+            debugf("closed");
+            udp_pcb_release(pcb);
+            mutex_unlock(&mutex);
+            return -1;
+        }
+    }
+
+    mutex_unlock(&mutex);
+    /* 送信元のアドレス＆ポートをコピー */
+    if (foreign) {
+        *foreign = entry->foreign;
+    }
+    /* バッファが小さかったら切り詰めて格納する */
+    len = MIN(size, entry->len); /* truncate */
+    memcpy(buf, entry->data, len);
+    memory_free(entry);
+    return len;
 }
