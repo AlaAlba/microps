@@ -180,6 +180,10 @@ intr_thread(void *arg)
             case SIGUSR1:
                 net_softirq_handler();
                 break;
+            /* SIGUSR2: イベント用のシグナルを補足したら net_event_handler() を呼び出す */
+            case SIGUSR2:
+                net_event_handler();
+                break;
             /* 周期処理用タイマーが発火した際の処理 */
             /* 登録されているタイマーを確認するために net_timer_handler() を呼び出す */
             case SIGALRM:
@@ -262,6 +266,8 @@ intr_init(void)
     sigaddset(&sigmask, SIGHUP);
     /* シグナル集合に SIGUSR1 を追加 (ソフトウェア割り込み用) */
     sigaddset(&sigmask, SIGUSR1);
+    /* シグナル集合に SIGUSR2 を追加 (イベント用) */
+    sigaddset(&sigmask, SIGUSR2);
     /* 周期処理用タイマー発火時に送信されるシグナルを追加 */
     sigaddset(&sigmask, SIGALRM);
     return 0;

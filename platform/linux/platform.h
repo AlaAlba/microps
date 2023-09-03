@@ -57,6 +57,7 @@ mutex_unlock(mutex_t *mutex)
 /* SIGRTMIN(34) は glibc が内部的に利用しているため +1 した番号から利用 */
 #define INTR_IRQ_BASE (SIGRTMIN+1)
 #define INTR_IRQ_SOFTIRQ SIGUSR1
+#define INTR_IRQ_EVENT SIGUSR2
 
 /* IRQ番号共有可能 */
 #define INTR_IRQ_SHARED 0x0001
@@ -72,5 +73,31 @@ extern void
 intr_shutdown(void);
 extern int
 intr_init(void);
+
+/**
+ * Scheduler
+ * タスクスケジュール構造体
+ */
+struct sched_ctx {
+    /* スレッドを休止させるために使用する条件変数 */
+    pthread_cond_t cond;
+    /* シグナルに割り込まれたことを示すフラグ */
+    int interrupted;
+    /* wait count･･･休止中のタスクの数 */
+    int wc;
+};
+
+#define SCHED_CTX_INITIALIZER {PTHREAD_COND_INITIALIZER, 0, 0}
+
+extern int
+sched_ctx_init(struct sched_ctx *ctx);
+extern int
+sched_ctx_destroy(struct sched_ctx *ctx);
+extern int
+sched_sleep(struct sched_ctx *ctx, mutex_t *mutex, const struct timespec *abstime);
+extern int
+sched_wakeup(struct sched_ctx *ctx);
+extern int
+sched_interrupt(struct sched_ctx *ctx);
 
 #endif

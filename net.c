@@ -59,6 +59,17 @@ struct net_timer {
     void (*handler)(void);
 };
 
+/**
+ * イベント構造体
+ */
+struct net_event {
+    struct net_event *next;
+    /* イベントハンドラ関数ポインタ */
+    void (*handler)(void *arg);
+    /* ハンドラへの引数 */
+    void *arg;
+};
+
 /* NOTE: if you want to add/delete the entries after net_run(), you need to protect these lists with a mutex. */
 /* デバイスリスト(リストの先頭を指すポインタ) */
 static struct net_device *devices;
@@ -66,6 +77,8 @@ static struct net_device *devices;
 static struct net_protocol *protocols;
 /* タイマーリスト */
 static struct net_timer *timers;
+/* イベントリスト */
+static struct net_event *events;
 
 /**
  * デバイスの生成
@@ -393,29 +406,6 @@ net_input_handler(uint16_t type, const uint8_t *data, size_t len, struct net_dev
 }
 
 /**
- * プロトコルスタックの起動
-*/
-int
-net_run(void)
-{
-    struct net_device *dev;
-
-    /* 割り込み機構の起動 */
-    if (intr_run() == -1) {
-        errorf("intr_run() failure");
-        return -1;
-    }
-
-    debugf("open all devices...");
-    /* 登録済みの全デバイスをオープン */
-    for (dev = devices; dev; dev = dev->next) {
-        net_device_open(dev);
-    }
-    debugf("running...");
-    return 0;
-}
-
-/**
  * ソフトウェア割り込みハンドラ
 */
 int
@@ -441,6 +431,78 @@ net_softirq_handler(void)
             memory_free(entry);
         }
     }
+    return 0;
+}
+
+/* NOTE: must not be call after net_run() */
+/**
+ * イベントの購読
+ * @param [in,out] handler イベントハンドラ関数ポインタ
+ * @param [in,out] arg ハンドラへの引数
+ * @return
+ */
+int
+net_event_subscribe(void (*handler)(void *arg), void *arg)
+{
+    struct net_event *event;
+
+    event = memory_alloc(sizeof(*event));
+    if (!event) {
+        errorf("memory_alloc() failure");
+        return -1;
+    }
+    event->handler = handler;
+    event->arg = arg;
+    event->next = events;
+    events = event;
+    return 0;
+}
+
+/**
+ * イベント用のシグナル受信時ハンドラ
+ */
+int
+net_event_handler(void)
+{
+    struct net_event *event;
+
+    /* イベントを購読してる全てのハンドラを呼び出す */
+    for (event = events; event; event = event->next) {
+        event->handler(event->arg);
+    }
+    return 0;
+}
+
+/**
+ * イベントの発生
+ */
+void
+net_raise_event(void)
+{
+    /* イベント用の割り込みを発生させる */
+    intr_raise_irq(INTR_IRQ_EVENT);
+}
+
+/**
+ * プロトコルスタックの起動
+*/
+int
+net_run(void)
+{
+    struct net_device *dev;
+
+    /* 割り込み機構の起動 */
+    if (intr_run() == -1) {
+        errorf("intr_run() failure");
+        return -1;
+    }
+
+    debugf("open all devices...");
+    /* 登録済みの全デバイスをオープン */
+    for (dev = devices; dev; dev = dev->next) {
+        net_device_open(dev);
+    }
+    debugf("running...");
     return 0;
 }
 
