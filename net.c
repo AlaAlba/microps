@@ -11,10 +11,6 @@
 
 #include "util.h"
 #include "net.h"
-#include "ip.h"
-#include "icmp.h"
-#include "arp.h"
-#include "udp.h"
 
 /**
  * プロトコル構造体
@@ -526,6 +522,12 @@ net_shutdown(void)
     debugf("shutting down");
 }
 
+#include "arp.h"
+#include "ip.h"
+#include "icmp.h"
+#include "udp.h"
+#include "tcp.h"
+
 /**
  * プロトコルスタックの初期化
 */
@@ -559,6 +561,12 @@ net_init(void)
     /* Exercise18-4: UDPの初期化関数を呼び出す */
     if (udp_init() == -1) {
         errorf("udp_init() failure");
+        return -1;
+    }
+
+    /* Exercise22-2: TCPの初期化関数を呼び出す */
+    if (tcp_init() == -1) {
+        errorf("tcp_init() failure");
         return -1;
     }
 
