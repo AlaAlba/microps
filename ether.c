@@ -68,7 +68,7 @@ ether_addr_ntop(const uint8_t *n, char *p, size_t size)
     if (!n || !p) {
         return NULL;
     }
-    snprintf(p, size,"%02x:%02x:%02x:%02x:%02x:%02x", n[0], n[1], n[2], n[3], n[4], n[5]);
+    snprintf(p, size, "%02x:%02x:%02x:%02x:%02x:%02x", n[0], n[1], n[2], n[3], n[4], n[5]);
     return p;
 }
 

@@ -64,7 +64,7 @@ ether_tap_addr(struct net_device *dev)
     strncpy(ifr.ifr_name, PRIV(dev)->name, sizeof(ifr.ifr_name)-1);
     /* ハードウェアアドレスの取得を要求する */
     if (ioctl(soc, SIOCGIFHWADDR, &ifr) == -1) {
-        errorf("ioctl [SIOCGIFHSWADDR]: %s, dev=%s", strerror(errno), dev->name);
+        errorf("ioctl [SIOCGIFHWADDR]: %s, dev=%s", strerror(errno), dev->name);
         close(soc);
         return -1;
     }

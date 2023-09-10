@@ -580,7 +580,7 @@ ip_output_device(struct ip_iface *iface, const uint8_t *data, size_t len, ip_add
             /* IP データグラム出力時にアドレス解決を行う */
             /* Exercise14-5: arp_resolve() を呼び出してアドレスを解決する */
             /* - 戻り値が ARP_RESOLVE_FOUND でなかったらその値をこの関数の戻り値として返す */
-            ret = arp_resolve(NET_IFACE(iface), dst, &hwaddr[0]);
+            ret = arp_resolve(NET_IFACE(iface), dst, hwaddr);
             if (ret != ARP_RESOLVE_FOUND) {
                 return ret;
             }
@@ -620,7 +620,7 @@ ip_output_core(struct ip_iface *iface, uint8_t protocol, const uint8_t *data, si
     hdr->total = hton16(total);
     hdr->id = hton16(id);
     hdr->offset = hton16(offset);
-    hdr->ttl = 255;
+    hdr->ttl = 0xff;
     hdr->protocol = protocol;
     hdr->sum = 0; /* あらかじめ 0 設定 */
     hdr->src = src;

@@ -267,7 +267,7 @@ arp_cache_insert(ip_addr_t pa, const uint8_t *ha)
         return NULL;
     }
     /* (2) エントリの情報を設定する */
-    memcpy(cache->ha, ha, sizeof(ETHER_ADDR_STR_LEN));
+    memcpy(cache->ha, ha, ETHER_ADDR_STR_LEN);
     cache->pa = pa;
     /* - state は解決済み(RESOLVED) の状態にする */
     cache->state = ARP_CACHE_STATE_RESOLVED;
@@ -300,8 +300,8 @@ arp_request(struct net_iface *iface, ip_addr_t tpa)
     memcpy(request.spa, &((struct ip_iface *)iface)->unicast, IP_ADDR_LEN);
     // 目標
     // 目標MACアドレスは分からないので「0」が格納される
-    memset(request.tha, 0, sizeof(ETHER_ADDR_LEN));
-    memcpy(request.tpa, &tpa, sizeof(IP_ADDR_LEN));
+    memset(request.tha, 0, ETHER_ADDR_LEN);
+    memcpy(request.tpa, &tpa, IP_ADDR_LEN);
 
     debugf("dev=%s, len=%zu", iface->dev->name, sizeof(request));
     arp_dump((uint8_t *)&request, sizeof(request));
