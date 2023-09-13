@@ -404,7 +404,6 @@ tcp_segment_arrives(struct tcp_segment_info *seg, uint8_t flags, uint8_t *data, 
 
     pcb = tcp_pcb_select(local, foreign);
 
-    debugf("!mydebug: pcb->state=%d, flags=%x, state=%d", pcb->state, flags, pcb->state);
     /* 使用していないポート宛に届いた TCP セグメントの処理 */
     if (!pcb || pcb->state == TCP_PCB_STATE_CLOSED) {
         if (TCP_FLG_ISSET(flags, TCP_FLG_RST)) {
@@ -464,7 +463,6 @@ tcp_segment_arrives(struct tcp_segment_info *seg, uint8_t flags, uint8_t *data, 
                 /* 初期送信シーケンス番号の採番 */
                 pcb->iss = random();
                 /* SYN+ACK の送信 */
-                debugf("!mydebug: tcp_output SYN + ACK");
                 tcp_output(pcb, TCP_FLG_SYN | TCP_FLG_ACK, NULL, 0);
                 /* 次に送信するシーケンス番号 */
                 pcb->snd.nxt = pcb->iss + 1;
@@ -538,10 +536,8 @@ tcp_segment_arrives(struct tcp_segment_info *seg, uint8_t flags, uint8_t *data, 
     if (!TCP_FLG_ISSET(flags, TCP_FLG_ACK)) {
         /* drop segment */
         /* ACK フラグを含んでいないセグメントは破棄 */
-        debugf("!mydebug: drop segment (not ack)");
         return;
     }
-    debugf("!mydebug: with ack segment");
     switch (pcb->state) {
         case TCP_PCB_STATE_SYN_RECEIVED:
             /* 送信セグメントに対する妥当な ACK かどうかの判断 */
